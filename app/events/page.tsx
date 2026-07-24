@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, MapPin, Users, Calendar, ExternalLink, Loader2, FileText, Globe } from "lucide-react"
+import { Download, MapPin, Users, Calendar, ExternalLink, Loader2, FileText, Globe, FileSpreadsheet, Trophy, Award } from "lucide-react"
 
 interface Event {
   name: string
@@ -13,13 +13,16 @@ interface Event {
   collection: string
   url: string
   totalCount: number
+  winnersCount?: number
   registrations?: any[]
+  winners?: any[]
 }
 
 interface EventsData {
   summary: {
     totalEvents: number
     totalRegistrations: number
+    totalWinners?: number
     activeEvents: number
   }
   data: Event[]
@@ -28,7 +31,6 @@ interface EventsData {
 export default function EventsPage() {
   const [eventsData, setEventsData] = useState<EventsData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
 
   const fetchEventsData = async () => {
     setLoading(true)
@@ -43,6 +45,56 @@ export default function EventsPage() {
       console.error("Error fetching events data:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const downloadEventsCSV = async (type: "all" | "location" | "event", identifier?: string, winnersOnly: boolean = false) => {
+    try {
+      let url = "/api/events?format=csv&"
+
+      if (winnersOnly) {
+        url += "winners=true&"
+      }
+
+      if (type === "all") {
+        url += "all=true"
+      } else if (type === "location" && identifier) {
+        url += `location=${encodeURIComponent(identifier)}`
+      } else if (type === "event" && identifier) {
+        url += `collection=${encodeURIComponent(identifier)}`
+      }
+
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error('Failed to download CSV')
+      }
+
+      const blob = await response.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = downloadUrl
+
+      // Extract filename from Content-Disposition header or create default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = winnersOnly ? 'winners-data.csv' : 'events-data.csv'
+      
+      if (contentDisposition) {
+        const matches = contentDisposition.match(/filename="([^"]+)"/)
+        if (matches && matches[1]) {
+          filename = matches[1]
+        }
+      }
+
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+
+    } catch (error) {
+      console.error("Error downloading CSV:", error)
+      alert("Failed to download CSV. Please try again.")
     }
   }
 
@@ -72,7 +124,6 @@ export default function EventsPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(downloadUrl)
 
-      alert("PDF downloaded successfully!")
     } catch (error) {
       console.error("Error downloading PDF:", error)
       alert("Failed to download PDF. Please try again.")
@@ -126,10 +177,18 @@ export default function EventsPage() {
           <h1 className="text-3xl font-bold">🎉 Event Management</h1>
           <p className="text-muted-foreground">All registered users for Muthupalasa & Start Club events</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={() => downloadEventsCSV("all", undefined, false)} className="flex items-center gap-2" variant="outline">
+            <FileSpreadsheet className="h-4 w-4" />
+            Participants CSV
+          </Button>
+          <Button onClick={() => downloadEventsCSV("all", undefined, true)} className="flex items-center gap-2" variant="outline">
+            <Trophy className="h-4 w-4" />
+            Winners CSV
+          </Button>
           <Button onClick={() => downloadEventsPDF("all")} className="flex items-center gap-2">
             <Download className="h-4 w-4" />
-            Download All Events PDF
+            Download PDF
           </Button>
           <Button asChild variant="outline">
             <a href="/dashboard">
@@ -141,7 +200,7 @@ export default function EventsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Events</CardTitle>
@@ -177,6 +236,17 @@ export default function EventsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Winners</CardTitle>
+            <Trophy className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{eventsData.summary.totalWinners?.toLocaleString() || 0}</div>
+            <p className="text-xs text-muted-foreground">Across all events</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Locations</CardTitle>
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -202,10 +272,20 @@ export default function EventsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold">All Events Overview</h2>
-              <Button onClick={() => downloadEventsPDF("all")} variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                PDF Report
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={() => downloadEventsCSV("all", undefined, false)} variant="outline">
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Participants CSV
+                </Button>
+                <Button onClick={() => downloadEventsCSV("all", undefined, true)} variant="outline">
+                  <Trophy className="h-4 w-4 mr-2" />
+                  Winners CSV
+                </Button>
+                <Button onClick={() => downloadEventsPDF("all")} variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  PDF Report
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -214,7 +294,17 @@ export default function EventsPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span className="text-lg">{event.name}</span>
-                      <Badge variant={event.totalCount > 0 ? "default" : "secondary"}>{event.totalCount} users</Badge>
+                      <div className="flex gap-2">
+                        <Badge variant={event.totalCount > 0 ? "default" : "secondary"}>
+                          {event.totalCount} users
+                        </Badge>
+                        {(event.winnersCount || 0) > 0 && (
+                          <Badge variant="destructive" className="bg-yellow-500 hover:bg-yellow-600">
+                            <Trophy className="h-3 w-3 mr-1" />
+                            {event.winnersCount} winners
+                          </Badge>
+                        )}
+                      </div>
                     </CardTitle>
                     <CardDescription className="flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
@@ -233,7 +323,25 @@ export default function EventsPage() {
                         <ExternalLink className="h-3 w-3 inline ml-1" />
                       </a>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => downloadEventsCSV("event", event.collection, false)}
+                        disabled={event.totalCount === 0}
+                      >
+                        <FileSpreadsheet className="h-3 w-3 mr-1" />
+                        CSV
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => downloadEventsCSV("event", event.collection, true)}
+                        disabled={(event.winnersCount || 0) === 0}
+                      >
+                        <Trophy className="h-3 w-3 mr-1" />
+                        Winners
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -256,10 +364,20 @@ export default function EventsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">📍 {location} Events</h2>
-                <Button onClick={() => downloadEventsPDF("location", location)} variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  PDF Report for {location}
-                </Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Button onClick={() => downloadEventsCSV("location", location, false)} variant="outline">
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Participants CSV
+                  </Button>
+                  <Button onClick={() => downloadEventsCSV("location", location, true)} variant="outline">
+                    <Trophy className="h-4 w-4 mr-2" />
+                    Winners CSV
+                  </Button>
+                  <Button onClick={() => downloadEventsPDF("location", location)} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    PDF Report
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -268,9 +386,17 @@ export default function EventsPage() {
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between">
                         <span>{event.name}</span>
-                        <Badge variant={event.totalCount > 0 ? "default" : "secondary"}>
-                          {event.totalCount} registrations
-                        </Badge>
+                        <div className="flex gap-2">
+                          <Badge variant={event.totalCount > 0 ? "default" : "secondary"}>
+                            {event.totalCount} registrations
+                          </Badge>
+                          {(event.winnersCount || 0) > 0 && (
+                            <Badge variant="destructive" className="bg-yellow-500 hover:bg-yellow-600">
+                              <Trophy className="h-3 w-3 mr-1" />
+                              {event.winnersCount} winners
+                            </Badge>
+                          )}
+                        </div>
                       </CardTitle>
                       <CardDescription>Collection: {event.collection}</CardDescription>
                     </CardHeader>
@@ -285,9 +411,10 @@ export default function EventsPage() {
 
                       {event.totalCount > 0 && (
                         <div className="space-y-2">
-                          <p className="text-sm font-medium">Recent Registrations:</p>
+                          <p className="text-sm font-medium">Event Statistics:</p>
                           <div className="text-xs text-muted-foreground space-y-1">
                             <p>• {event.totalCount} total users registered</p>
+                            <p>• {event.winnersCount || 0} winners selected</p>
                             <p>
                               • Collection: <code className="bg-muted px-1 rounded">{event.collection}</code>
                             </p>
@@ -295,7 +422,25 @@ export default function EventsPage() {
                         </div>
                       )}
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadEventsCSV("event", event.collection, false)}
+                          disabled={event.totalCount === 0}
+                        >
+                          <FileSpreadsheet className="h-3 w-3 mr-1" />
+                          CSV
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadEventsCSV("event", event.collection, true)}
+                          disabled={(event.winnersCount || 0) === 0}
+                        >
+                          <Trophy className="h-3 w-3 mr-1" />
+                          Winners
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -303,7 +448,7 @@ export default function EventsPage() {
                           disabled={event.totalCount === 0}
                         >
                           <Download className="h-3 w-3 mr-1" />
-                          Event PDF
+                          PDF
                         </Button>
                       </div>
                     </CardContent>

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { CrudInterface } from "@/components/crud-interface-table"
-import { Database, Users, ImageIcon, FileText } from "lucide-react"
+import { Database, Users, ImageIcon, FileText, Download, Calendar, TableIcon } from "lucide-react"
 
 export default function CrudPage() {
   const collectionName = process.env.NEXT_PUBLIC_COLLECTION_NAME || "EventDaySubmission"
@@ -68,12 +68,56 @@ export default function CrudPage() {
         </TabsContent>
 
         <TabsContent value="processed-images">
-          <CrudInterface
-            database="background-removal"
-            collection="processed-images"
-            title="Processed Images"
-            description="Manage processed images with background removal"
-          />
+          <div className="space-y-4">
+            {/* Export Options Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="h-5 w-5" />
+                  Export Options
+                </CardTitle>
+                <CardDescription>
+                  Download processed images data in different formats
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-3">
+                  <Button 
+                    onClick={() => handleExport('summary')}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Summary CSV (Date, NIC, Name)
+                  </Button>
+                  <Button 
+                    onClick={() => handleExport('detailed')}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <TableIcon className="h-4 w-4" />
+                    Detailed CSV (All Data with Mapping)
+                  </Button>
+                  <Button 
+                    onClick={() => handleExport('pdf')}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    PDF Report
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* CRUD Interface */}
+            <CrudInterface
+              database="background-removal"
+              collection="processed-images"
+              title="Processed Images"
+              description="Manage processed images with background removal"
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="custom">
@@ -82,6 +126,39 @@ export default function CrudPage() {
       </Tabs>
     </div>
   )
+}
+
+// Export handler function
+const handleExport = async (format: 'summary' | 'detailed' | 'pdf') => {
+  try {
+    const response = await fetch(`/api/processed-images/export?format=${format}`)
+    
+    if (!response.ok) {
+      throw new Error('Export failed')
+    }
+
+    // Get filename from response headers or create default
+    const contentDisposition = response.headers.get('content-disposition')
+    const filename = contentDisposition 
+      ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+      : `processed-images-${format}-${new Date().toISOString().split('T')[0]}.${format === 'pdf' ? 'pdf' : 'csv'}`
+
+    // Create blob and download
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.style.display = 'none'
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+
+  } catch (error) {
+    console.error('Export error:', error)
+    alert('Export failed. Please try again.')
+  }
 }
 
 function CustomQueryInterface() {
